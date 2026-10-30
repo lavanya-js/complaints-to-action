@@ -63,6 +63,8 @@ def create_report(
     text = text.strip()
     if len(text) < 5:
         raise HTTPException(400, "Please describe the problem (at least 5 characters).")
+        if len(text) > 2000:
+            raise HTTPException(400, "Description is too long (max 2000 characters).")
     if not (-90 <= lat <= 90 and -180 <= lng <= 180):
         raise HTTPException(400, "Invalid location.")
 
@@ -74,8 +76,11 @@ def create_report(
         if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
             raise HTTPException(400, "Image must be jpg, png or webp.")
         fname = f"{code}{ext}"
+        data = image.file.read()
+        if len(data) > 5_000_000:
+            raise HTTPException(400, "Image is too large (max 5 MB).")
         with open(UPLOADS / fname, "wb") as f:
-            shutil.copyfileobj(image.file, f)
+            f.write(data)
         image_path = f"/uploads/{fname}"  # stored only, NOT analysed by the AI
 
     use_ai = category not in CATEGORIES

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Track your report</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f6f8; color: #1d2733; }
+  header { background: #0b5ed7; color: #fff; padding: 14px 16px; }
+  header h1 { margin: 0; font-size: 18px; }
+  main { max-width: 560px; margin: 0 auto; padding: 14px; }
+  input { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #c5cdd6; border-radius: 8px; text-transform: uppercase; }
+  button { font-size: 16px; padding: 12px; border: 0; border-radius: 8px; background: #0b5ed7; color: #fff; width: 100%; margin-top: 10px; cursor: pointer; font-weight: 600; }
+  .box { background: #fff; border: 1px solid #dde3ea; border-radius: 8px; padding: 14px; margin-top: 14px; }
+  .err { background: #fde0e0; padding: 12px; border-radius: 8px; margin-top: 14px; }
+  .steps { display: flex; justify-content: space-between; margin: 14px 0; }
+  .step { flex: 1; text-align: center; font-size: 11px; color: #8a97a5; position: relative; }
+  .dot { width: 18px; height: 18px; border-radius: 50%; background: #d3dde6; margin: 0 auto 4px; }
+  .step.done .dot { background: #2e7d32; } .step.done { color: #1d2733; }
+  .step.now .dot { background: #0b5ed7; box-shadow: 0 0 0 4px #cfe0fb; } .step.now { color: #0b5ed7; font-weight: 700; }
+  .tl { border-left: 3px solid #d3dde6; margin-left: 6px; padding-left: 12px; }
+  .tl div { margin-bottom: 12px; font-size: 14px; }
+  .tl small { color: #55606b; display: block; }
+  .note { font-size: 12px; color: #55606b; margin-top: 12px; }
+</style>
+</head>
+<body>
+<header><h1>Track your report</h1></header>
+<main>
+  <label for="code"><b>Enter your tracking code</b></label>
+  <input id="code" placeholder="CTA-XXXXXX" autocomplete="off">
+  <button id="go">Check status</button>
+  <div id="out"></div>
+  <p class="note">Notifications by SMS or email are <b>mocked</b> in this prototype: please check this page for updates. <a href="/">Report a problem</a></p>
+</main>
+<script>
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const fmt = iso => new Date(iso + 'Z').toLocaleString();
+  const out = document.getElementById('out');
+
+  async function check() {
+    const code = document.getElementById('code').value.trim();
+    if (!code) return;
+    const res = await fetch('/api/track/' + encodeURIComponent(code));
+    const d = await res.json();
+    if (!res.ok) { out.innerHTML = '<div class="err">' + esc(d.detail || 'Something went wrong') + '</div>'; return; }
+    const idx = d.statuses.indexOf(d.status);
+    out.innerHTML = '<div class="box"><b>' + esc(d.tracking_code) + '</b> &middot; ' + esc(d.category) +
+      '<div style="margin-top:6px">' + esc(d.summary) + '</div>' +
+      '<div class="steps">' + d.statuses.map((s, i) =>
+        '<div class="step ' + (i < idx ? 'done' : i === idx ? 'now' : '') + '"><div class="dot"></div>' + esc(s) + '</div>').join('') + '</div>' +
+      '<div><b>Current status: ' + esc(d.status) + '</b>' + (d.team ? ' &middot; Assigned to ' + esc(d.team) : '') + '</div></div>' +
+      '<div class="box"><b>History</b><div class="tl" style="margin-top:10px">' +
+      d.timeline.slice().reverse().map(t => '<div><b>' + esc(t.status) + '</b>' + (t.note ? ' - ' + esc(t.note) : '') +
+        '<small>' + esc(fmt(t.at)) + '</small></div>').join('') + '</div></div>';
+  }
+  document.getElementById('go').onclick = check;
+  document.getElementById('code').addEventListener('keydown', e => { if (e.key === 'Enter') check(); });
+  const q = new URLSearchParams(location.search).get('code');
+  if (q) { document.getElementById('code').value = q; check(); }
+</script>
+</body>
+</html>

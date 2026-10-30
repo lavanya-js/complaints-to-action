@@ -95,7 +95,14 @@
 
   const markerLayer = L.layerGroup().addTo(map);
   const hotLayer = L.layerGroup().addTo(map);
-  let reports = [], clusters = [], brief = null, markers = {}, first = true;
+    let reports = [], clusters = [], brief = null, markers = {}, first = true;
+  const STATUSES = ['Submitted', 'Under Review', 'Assigned', 'In Progress', 'Resolved'];
+  let TEAMS = [];
+  fetch('/api/teams').then(r => r.json()).then(t => TEAMS = t);
+  async function post(url, body) {
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) alert((await res.json()).detail || 'Failed');
+  }
 
   async function load() {
     [reports, clusters, brief] = await Promise.all([
@@ -180,6 +187,20 @@
         (f.max ? f.points / f.max * 100 : 0) + '%"></i></div>').join('') +
       '<div class="note">Duplicate check: ' + esc(d.duplicate_note) + '</div>' +
       (d.image_path ? '<img src="' + esc(d.image_path) + '" style="max-width:160px;border-radius:6px"><div class="note">Photo is stored but not analysed by the AI.</div>' : '');
+        const r = reports.find(x => x.id === id);
+    const staff = document.createElement('div');
+    staff.innerHTML = '<hr><b>Staff actions</b> <span class="note">(login is mocked: anyone can use this)</span><br>' +
+      '<select class="team"></select> <button class="doAssign">Assign</button><br>' +
+      '<select class="stat">' + STATUSES.map(s => '<option' + (s === r.status ? ' selected' : '') + '>' + s + '</option>').join('') + '</select> ' +
+      '<input class="snote" placeholder="Note for the citizen (optional)" style="padding:6px;width:50%"> <button class="doStatus">Update</button>' +
+      '<div class="note">Tracking code: <b>' + esc(r.tracking_code) + '</b></div>';
+    box.appendChild(staff);
+    const tsel = staff.querySelector('.team');
+    TEAMS.forEach(t => { const o = document.createElement('option'); o.textContent = t; tsel.appendChild(o); });
+    staff.querySelector('.doAssign').onclick = async () => {
+      await post('/api/reports/' + id + '/assign', { team: tsel.value, note: staff.querySelector('.snote').value }); await load(); };
+    staff.querySelector('.doStatus').onclick = async () => {
+      await post('/api/reports/' + id + '/status', { status: staff.querySelector('.stat').value, note: staff.querySelector('.snote').value }); await load(); };
     box.hidden = false;
   }
 
