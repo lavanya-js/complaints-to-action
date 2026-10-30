@@ -116,6 +116,56 @@ def list_reports(db: Session = Depends(get_db)):
     ]
 
 
+import json
+from collections import Counter
+
+ACTIONS = {
+    "Electrical Hazard": "Send an electrical crew now; keep people away until it is made safe.",
+    "Drainage & Waterlogging": "Dispatch a drain-clearing or pumping team.",
+    "Road Damage": "Put up barricades, then schedule the repair.",
+    "Water Supply": "Check the line and arrange tanker supply if needed.",
+    "Garbage & Waste": "Schedule an extra collection run.",
+    "Streetlight": "Add to the next lighting repair round.",
+}
+
+
+@app.get("/api/clusters")
+def list_clusters(db: Session = Depends(get_db)):
+    return [{"id": c.id, "label": c.label, "summary": c.summary,
+             "report_count": c.report_count, "lat": c.center_lat, "lng": c.center_lng}
+            for c in db.query(models.Cluster).all()]
+
+
+@app.get("/api/reports/{rid}")
+def report_detail(rid: int, db: Session = Depends(get_db)):
+    r = db.get(models.Report, rid)
+    if not r:
+        raise HTTPException(404, "Report not found")
+    return {"id": r.id, "factors": json.loads(r.priority_factors or "[]"),
+            "explanation": r.priority_explanation, "duplicate_note": dup_note(r),
+            "image_path": r.image_path}
+
+
+@app.get("/api/brief")
+def action_brief(db: Session = Depends(get_db)):
+    reports = db.query(models.Report).all()
+    open_r = [r for r in reports if r.status != "Resolved"]
+    unique = [r for r in open_r if not r.duplicate_of]
+    dups = Counter(r.duplicate_of for r in open_r if r.duplicate_of)
+    critical = [r for r in unique if r.priority_score >= 60]
+    top = sorted(unique, key=lambda r: -r.priority_score)[:5]
+    clusters = (db.query(models.Cluster)
+                .order_by(models.Cluster.report_count.desc()).limit(3).all())
+    return {
+        "headline": (f"{len(open_r)} open reports are {len(unique)} separate issues after "
+                     f"merging duplicates. {len(critical)} need urgent action."),
+        "method": "Template-based brief built from the priority scores (no LLM).",
+        "items": [{"id": r.id, "summary": r.summary, "why": r.priority_explanation,
+                   "action": ACTIONS.get(r.category, "Review and assign."),
+                   "duplicates": dups.get(r.id, 0), "score": r.priority_score}
+                  for r in top],
+        "hotspots": [{"label": c.label, "summary": c.summary} for c in clusters],
+    }
+
+
 # Serve uploaded images and the frontend (must come after the API routes)
-app.mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads")
-app.mount("/", StaticFiles(directory=ROOT / "frontend", html=True), name="frontend")
