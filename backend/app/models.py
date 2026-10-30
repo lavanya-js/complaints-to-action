@@ -20,6 +20,7 @@ class Report(Base):
     priority_explanation = Column(Text, default="")
     duplicate_of = Column(Integer, nullable=True)
     duplicate_confidence = Column(Float, nullable=True)
+    duplicate_reason = Column(Text, default="")
     cluster_id = Column(Integer, nullable=True)
     ai_source = Column(String, default="classifier")  # classifier | rules
     created_at = Column(DateTime, default=datetime.utcnow)
