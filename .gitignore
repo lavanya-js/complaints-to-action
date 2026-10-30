@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Secrets (never commit your API key)
+.env
+
+# Local database and uploads
+*.db
+*.sqlite3
+data/uploads/
+
+# Node
+node_modules/
+dist/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
