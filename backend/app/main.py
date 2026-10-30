@@ -169,3 +169,80 @@ def action_brief(db: Session = Depends(get_db)):
 
 
 # Serve uploaded images and the frontend (must come after the API routes)
+
+from pydantic import BaseModel
+
+STATUSES = ["Submitted", "Under Review", "Assigned", "In Progress", "Resolved"]
+TEAMS = ["Electrical Dept", "Roads & Potholes Team", "Drainage & Sewerage Team",
+         "Water Board", "Sanitation Team", "Street Lighting Team"]
+
+
+class AssignIn(BaseModel):
+    team: str
+    note: str = ""
+
+
+class StatusIn(BaseModel):
+    status: str
+    note: str = ""
+
+
+def _apply(db: Session, r, status: str, note: str):
+    """Update a report and every report merged into it, so all citizens see progress."""
+    targets = [r]
+    if not r.duplicate_of:
+        targets += db.query(models.Report).filter(models.Report.duplicate_of == r.id).all()
+    for t in targets:
+        t.status = status
+        extra = "" if t.id == r.id else " (updated together with the main report for this issue)"
+        db.add(models.StatusHistory(report_id=t.id, status=status, note=(note + extra).strip()))
+
+
+@app.get("/api/teams")
+def list_teams():
+    return TEAMS
+
+
+@app.post("/api/reports/{rid}/assign")
+def assign_report(rid: int, body: AssignIn, db: Session = Depends(get_db)):
+    r = db.get(models.Report, rid)
+    if not r:
+        raise HTTPException(404, "Report not found")
+    if body.team not in TEAMS:
+        raise HTTPException(400, "Unknown team")
+    db.add(models.Assignment(report_id=rid, team=body.team))
+    _apply(db, r, "Assigned", f"Assigned to {body.team}. {body.note}")
+    db.commit()
+    return {"ok": True, "status": r.status}
+
+
+@app.post("/api/reports/{rid}/status")
+def change_status(rid: int, body: StatusIn, db: Session = Depends(get_db)):
+    r = db.get(models.Report, rid)
+    if not r:
+        raise HTTPException(404, "Report not found")
+    if body.status not in STATUSES:
+        raise HTTPException(400, "Unknown status")
+    _apply(db, r, body.status, body.note or f"Status changed to {body.status}")
+    db.commit()
+    return {"ok": True, "status": r.status}
+
+
+@app.get("/api/track/{code}")
+def track(code: str, db: Session = Depends(get_db)):
+    r = db.query(models.Report).filter_by(tracking_code=code.strip().upper()).first()
+    if not r:
+        raise HTTPException(404, "No report found with that code.")
+    hist = (db.query(models.StatusHistory).filter_by(report_id=r.id)
+            .order_by(models.StatusHistory.created_at, models.StatusHistory.id).all())
+    asg = (db.query(models.Assignment).filter_by(report_id=r.id)
+           .order_by(models.Assignment.id.desc()).first())
+    return {
+        "tracking_code": r.tracking_code, "status": r.status, "category": r.category,
+        "summary": r.summary, "submitted": r.created_at.isoformat(),
+        "team": asg.team if asg else None, "statuses": STATUSES,
+        "timeline": [{"status": h.status, "note": h.note, "at": h.created_at.isoformat()} for h in hist],
+    }
+
+app.mount("/uploads", StaticFiles(directory=UPLOADS), name="uploads")
+app.mount("/", StaticFiles(directory=ROOT / "frontend", html=True), name="frontend")
