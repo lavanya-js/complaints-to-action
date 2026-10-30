@@ -21,6 +21,9 @@ CATEGORIES = [
 ]
 
 Base.metadata.create_all(engine)
+
+from .bootstrap import seed_if_empty
+seed_if_empty()
 app = FastAPI(title="From Complaints to Action")
 
 
